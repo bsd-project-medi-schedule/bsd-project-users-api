@@ -158,9 +158,12 @@ object NatsClient {
             IO.delay {
               // Use ephemeral push consumer - let JetStream create it automatically
               val consumerConfig = ConsumerConfiguration.builder()
+                .durable(streamName)                 // IMPORTANT: durable name
                 .filterSubject(subject)
                 .ackPolicy(AckPolicy.Explicit)
-                .deliverPolicy(DeliverPolicy.New)
+                .deliverPolicy(DeliverPolicy.All)     // IMPORTANT: not New
+                .maxAckPending(1024)
+                .ackWait(JDuration.ofSeconds(30))
                 .build()
 
               val pushOptions = PushSubscribeOptions.builder()
