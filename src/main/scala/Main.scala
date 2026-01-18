@@ -12,8 +12,6 @@ import nats.EventProcessor
 import nats.NatsClient
 import natstools.handlers.UserCreatedHandler
 import org.http4s.blaze.server.BlazeServerBuilder
-import org.typelevel.log4cats.slf4j.Slf4jLogger
-import org.typelevel.log4cats.Logger
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.duration.FiniteDuration
