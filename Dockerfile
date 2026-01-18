@@ -6,4 +6,6 @@ COPY . .
 
 RUN ["sbt", "compile"]
 
+EXPOSE 7000
+
 ENTRYPOINT ["sbt", "run"]
