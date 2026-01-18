@@ -8,6 +8,7 @@ import doobie.Transactor
 import http.UserHttp
 import impl.LoginSessionRepoImpl
 import impl.UserRepoImpl
+import nats.EventBus
 import org.http4s.HttpRoutes
 import service.LoginSessionService
 import service.UserService
@@ -24,6 +25,7 @@ object UserFactory {
   def apply()(implicit
     t: Transactor[IO],
     jwtService: JwtService,
+    eventBus: EventBus,
     networkConfig: NetworkConfig
   ): Resource[IO, UserFactory] =
     Resource.eval(IO {
@@ -31,9 +33,9 @@ object UserFactory {
       val userService = UserService(userRepo)
 
       val loginSessionRepo = LoginSessionRepoImpl()
-      val loginSessionService = LoginSessionService(loginSessionRepo)
+      implicit val loginSessionService: LoginSessionService = LoginSessionService(loginSessionRepo)
 
-      val userHttp = UserHttp(userService, loginSessionService)
+      val userHttp = UserHttp(userService)
       val userCors = MainCorsPolicy(userHttp.routes())
 
       UserFactory(userService, loginSessionService, userCors)

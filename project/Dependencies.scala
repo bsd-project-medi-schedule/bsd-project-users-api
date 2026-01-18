@@ -2,7 +2,7 @@ import sbt.compilerPlugin
 import sbt.librarymanagement.syntax.*
 
 object Dependencies {
-  lazy val projectScalaVersion = "2.13.16"
+  lazy val projectScalaVersion = "2.13.18"
 
   val http4sVersion          = "0.23.30"
   lazy val http4sDsl         = "org.http4s" %% "http4s-dsl"          % http4sVersion
@@ -32,6 +32,12 @@ object Dependencies {
   lazy val doobieH2       = "org.tpolecat" %% "doobie-h2"       % doobieVersion
   lazy val doobieHikari   = "org.tpolecat" %% "doobie-hikari"   % doobieVersion
 
+  val fs2Version = "3.12.2"
+  lazy val fs2Core = "co.fs2"        %% "fs2-core"      % fs2Version
+  lazy val fs2IO = "co.fs2"        %% "fs2-io"        % fs2Version
+
+  lazy val nats = "io.nats"        % "jnats"         % "2.25.1"
+
   val circeVersion      = "0.14.10"
   lazy val circeCore    = "io.circe" %% "circe-core"    % circeVersion
   lazy val circeGeneric = "io.circe" %% "circe-generic" % circeVersion
@@ -58,9 +64,6 @@ object Dependencies {
 
   lazy val twilio = "com.twilio.sdk" % "twilio" % "10.7.2"
 
-  lazy val fs2 = "co.fs2" %% "fs2-io" % "3.12.0"
-
   lazy val apachePoi = "org.apache.poi" % "poi-ooxml" % "5.4.1"
 
-  lazy val nats = "io.nats" % "jnats" % "2.21.1"
 }

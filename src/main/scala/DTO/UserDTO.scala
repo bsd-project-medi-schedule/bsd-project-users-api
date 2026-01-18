@@ -13,6 +13,7 @@ case class UserDTO(
   firstName: String,
   lastName: String,
   phoneNumber: String,
+  isConfirmed: Option[Boolean],
   createdAt: Option[Instant]
 )
 

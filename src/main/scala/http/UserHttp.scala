@@ -2,25 +2,39 @@ package http
 
 import cats.data.EitherT
 import cats.effect.IO
+import cats.implicits.toBifunctorOps
+import config.objects.NetworkConfig
+import error.ServiceError
 import io.circe.syntax.*
 import io.circe.Json
-
 import java.util.UUID
+import nats.EventBus
+import nats.NatsEvent
+import natstools.events.EmailEvent
+import natstools.events.UserCreatedEvent
 import org.http4s.circe.*
 import org.http4s.circe.CirceEntityCodec.circeEntityDecoder
 import org.http4s.dsl.io.*
 import org.http4s.HttpRoutes
-import service.{LoginSessionService, UserService}
+import service.LoginSessionService
+import service.UserService
+import utils.memory.ConfirmUsersToken
 import utils.memory.NewUsersTokens
-import utils.{JwtService, NonceService, Sha256Service, UserRanks}
-import config.objects.NetworkConfig
+import utils.JwtService
+import utils.NonceService
+import utils.Sha256Service
+import utils.UserRanks
 import DTO.GenericMessageDTO
 import DTO.UserDTO
-import error.ServiceError
 
 final case class UserHttp(
   userService: UserService,
-)(implicit jwtService: JwtService, loginSessionService: LoginSessionService, networkConfig: NetworkConfig) {
+)(implicit
+  jwtService: JwtService,
+  loginSessionService: LoginSessionService,
+  eventBus: EventBus,
+  networkConfig: NetworkConfig
+) {
 
   private object OffsetMatcher extends QueryParamDecoderMatcher[Int]("offset")
   private object SizeMatcher extends QueryParamDecoderMatcher[Int]("size")
@@ -30,7 +44,8 @@ final case class UserHttp(
 
       case req @ GET -> Root / "user" =>
         val resData = for {
-          (jwtClaims, refreshResult) <- HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.DOCTOR)
+          (jwtClaims, refreshResult) <-
+            HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.DOCTOR)
           userId = UUID.fromString(jwtClaims.getSubject)
 
           userDTO <- userService.readUser(userId)
@@ -47,7 +62,7 @@ final case class UserHttp(
       case req @ GET -> Root / "user" :? OffsetMatcher(offset) +& SizeMatcher(size) =>
         val result = for {
           (_, refreshResult) <- HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.DOCTOR)
-          resp <- userService.readUsers(offset, size)
+          resp               <- userService.readUsers(offset, size)
         } yield (resp, refreshResult)
 
         result.fold(
@@ -82,8 +97,34 @@ final case class UserHttp(
       case req @ POST -> Root / "user" / "client" =>
         req.as[UserDTO].flatMap { userData =>
           val maybeUserId = for {
-            created <- userService.createUser(userData.copy(role = Some(2)))
-          } yield created
+            userId <- userService.createUser(userData.copy(role = Some(2)))
+            otp = NonceService.generatePin(length = 12)
+            _ <- EitherT(ConfirmUsersToken.put(
+              Sha256Service.hash(otp),
+              userId
+            ).attempt.map(_.leftMap(_ => ServiceError.InternalError("There was an internal problem"))))
+
+            welcomeEmailMetadata = Map(
+              "name" -> s"${userData.firstName} ${userData.lastName}"
+            )
+            createdEmailMetadata = Map(
+              "name" -> s"${userData.firstName} ${userData.lastName}",
+              "otp" -> otp
+            )
+
+            events = Seq(
+              NatsEvent.create[UserCreatedEvent]((id, ts) =>
+                UserCreatedEvent(id, ts, userId, userData.email)
+              ),
+              NatsEvent.create[EmailEvent]((id, ts) =>
+                EmailEvent(id, ts, userData.email, purpose = "email.welcome", welcomeEmailMetadata)
+              ),
+              NatsEvent.create[EmailEvent]((id, ts) =>
+                EmailEvent(id, ts, userData.email, purpose = "email.confirm", createdEmailMetadata)
+              )
+            )
+            _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")
+          } yield userId
 
           maybeUserId.fold(
             err => ErrorMapper.toResponse(err),
@@ -101,8 +142,9 @@ final case class UserHttp(
           refreshResult => {
             val nonce = NonceService.generatePin()
             for {
-              _        <- NewUsersTokens.put(Sha256Service.hash(nonce))
-              response <- HttpUtils.handleTokenRefresh(Ok(Json.obj("nonce" -> nonce.asJson)), refreshResult)
+              _ <- NewUsersTokens.put(Sha256Service.hash(nonce))
+              response <-
+                HttpUtils.handleTokenRefresh(Ok(Json.obj("nonce" -> nonce.asJson)), refreshResult)
             } yield response
           }
         ).flatten
@@ -114,8 +156,33 @@ final case class UserHttp(
               NewUsersTokens.remove(Sha256Service.hash(otp)),
               ServiceError.BadRequest("Token not found"): ServiceError
             )
-
             userId <- userService.createUser(userData.copy(role = Some(1)))
+            otp = NonceService.generatePin(length = 12)
+            _ <- EitherT(ConfirmUsersToken.put(
+              Sha256Service.hash(otp),
+              userId
+            ).attempt.map(_.leftMap(_ => ServiceError.InternalError("There was an internal problem"))))
+
+            welcomeEmailMetadata = Map(
+              "name" -> s"${userData.firstName} ${userData.lastName}"
+            )
+            createdEmailMetadata = Map(
+              "name" -> s"${userData.firstName} ${userData.lastName}",
+              "otp" -> otp
+            )
+
+            events = Seq(
+              NatsEvent.create[UserCreatedEvent]((id, ts) =>
+                UserCreatedEvent(id, ts, userId, userData.email)
+              ),
+              NatsEvent.create[EmailEvent]((id, ts) =>
+                EmailEvent(id, ts, userData.email, purpose = "email.welcome", welcomeEmailMetadata)
+              ),
+              NatsEvent.create[EmailEvent]((id, ts) =>
+                EmailEvent(id, ts, userData.email, purpose = "email.confirm", createdEmailMetadata)
+              )
+            )
+            _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")
           } yield userId
 
           maybeUserId.fold(
@@ -124,43 +191,71 @@ final case class UserHttp(
           ).flatten
         }
 
+      case GET -> Root / "user" / "confirm" / otp =>
+        val resp = for {
+          userId <- EitherT.fromOptionF(
+            ConfirmUsersToken.remove(Sha256Service.hash(otp)),
+            ServiceError.BadRequest("Token not found"): ServiceError
+          )
+          _ <- userService.confirmUser(userId)
+        } yield ()
+
+        resp.fold(
+          err => ErrorMapper.toResponse(err),
+          _ => Ok(Json.obj("message" -> "User confirmed successfully".asJson))
+        ).flatten
+
       case req @ PUT -> Root / "user" =>
         req.as[UserDTO].flatMap { newUser =>
           val resp = for {
-            (jwtClaims, refreshResult) <- HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
+            (jwtClaims, refreshResult) <-
+              HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
             userId = UUID.fromString(jwtClaims.getSubject)
             _ <- userService.updateUser(userId, newUser)
           } yield refreshResult
 
           resp.fold(
             err => ErrorMapper.toResponse(err),
-            refreshResult => HttpUtils.handleTokenRefresh(Ok(Json.obj("message" -> "User updated successfully".asJson)), refreshResult)
+            refreshResult =>
+              HttpUtils.handleTokenRefresh(
+                Ok(Json.obj("message" -> "User updated successfully".asJson)),
+                refreshResult
+              )
           ).flatten
         }
 
       case req @ PUT -> Root / "user" / "password" =>
         req.as[GenericMessageDTO].flatMap { passwordMessage =>
           val resp = for {
-            (jwtClaims, refreshResult) <- HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
+            (jwtClaims, refreshResult) <-
+              HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
             userId = UUID.fromString(jwtClaims.getSubject)
             _ <- userService.updatePassword(userId, passwordMessage.message)
           } yield refreshResult
 
           resp.fold(
             err => ErrorMapper.toResponse(err),
-            refreshResult => HttpUtils.handleTokenRefresh(Ok(Json.obj("message" -> "Password updated successfully".asJson)), refreshResult)
+            refreshResult =>
+              HttpUtils.handleTokenRefresh(
+                Ok(Json.obj("message" -> "Password updated successfully".asJson)),
+                refreshResult
+              )
           ).flatten
         }
 
       case req @ DELETE -> Root / "user" / UUIDVar(userId) =>
         val resp = for {
           (_, refreshResult) <- HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
-          _ <- userService.deleteUser(userId)
+          _                  <- userService.deleteUser(userId)
         } yield refreshResult
 
         resp.fold(
           err => ErrorMapper.toResponse(err),
-          refreshResult => HttpUtils.handleTokenRefresh(Ok(Json.obj("message" -> "User deleted successfully".asJson)), refreshResult)
+          refreshResult =>
+            HttpUtils.handleTokenRefresh(
+              Ok(Json.obj("message" -> "User deleted successfully".asJson)),
+              refreshResult
+            )
         ).flatten
 
       case req @ DELETE -> Root / "user" =>

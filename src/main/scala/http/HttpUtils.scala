@@ -2,9 +2,12 @@ package http
 
 import cats.data.EitherT
 import cats.effect.IO
+import cats.implicits.toBifunctorOps
 import com.nimbusds.jwt.JWTClaimsSet
 import config.objects.NetworkConfig
 import error.ServiceError
+import nats.EventBus
+import nats.NatsEvent
 import org.http4s.Response
 import org.http4s.ResponseCookie
 import org.http4s.SameSite
@@ -14,6 +17,16 @@ import utils.NonceService
 import utils.Sha256Service
 
 object HttpUtils {
+
+  def httpPublishEvent(event: NatsEvent, err: String)(implicit
+    eventBus: EventBus
+  ): EitherT[IO, ServiceError, Unit] =
+    EitherT(eventBus.publish(event).attempt.map(_.leftMap(_ => ServiceError.InternalError(err))))
+
+  def httpPublishEvent(events: Seq[NatsEvent], err: String)(implicit
+    eventBus: EventBus
+  ): EitherT[IO, ServiceError, Unit] =
+    EitherT(eventBus.publish(events).attempt.map(_.leftMap(_ => ServiceError.InternalError(err))))
 
   case class TokenRefreshResult(newJwt: Option[String], newRefresh: Option[String])
 
@@ -52,7 +65,8 @@ object HttpUtils {
         ServiceError.Forbidden("Incompatible jwt - refresh")
       )
       refreshResult <- if (isExpired) {
-        val newJwt = jwtService.createToken(loginSession.id, role, jwtClaims.getStringClaim("firstName"))
+        val newJwt =
+          jwtService.createToken(loginSession.id, role, jwtClaims.getStringClaim("firstName"))
         val newRefresh = NonceService.generateNonce()
         val newRefreshHash = Sha256Service.hash(newRefresh)
         loginSessionService.updateToken(refreshTokenHash, newRefreshHash)

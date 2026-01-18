@@ -21,28 +21,28 @@ final case class UserRepoImpl()(implicit t: Transactor[IO]) extends UserRepo {
 
   override def readUserById(id: UUID): IO[Option[UserDTO]] =
     sql"""
-      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, created_at
+      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, NULL AS is_confirmed, created_at
       FROM users
       WHERE id = $id
       """.query[UserDTO].option.transact(t)
 
   override def validateUser(email: String): IO[Option[UserDTO]] =
     sql"""
-      SELECT id, email, password, role, first_name, last_name, phone_number, created_at
+      SELECT id, email, password, role, first_name, last_name, phone_number, NULL AS is_confirmed, created_at
       FROM users
       WHERE email = $email
       """.query[UserDTO].option.transact(t)
 
   override def readUserByEmail(email: String): IO[Option[UserDTO]] =
     sql"""
-      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, created_at
+      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, NULL AS is_confirmed, created_at
       FROM users
       WHERE email = $email
       """.query[UserDTO].option.transact(t)
 
   override def readUsers(offset: Int, size: Int): IO[List[UserDTO]] =
     sql"""
-    SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, created_at
+    SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, NULL AS is_confirmed, created_at
     FROM users
     ORDER BY last_name, first_name
     LIMIT $size OFFSET $offset
@@ -60,7 +60,7 @@ final case class UserRepoImpl()(implicit t: Transactor[IO]) extends UserRepo {
 
     val q: Fragment =
       fr"""
-      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, created_at
+      SELECT id, email, NULL AS password, role, first_name, last_name, phone_number, NULL AS is_confirmed, created_at
       FROM users
       WHERE
     """ ++ whereClause ++
@@ -77,6 +77,10 @@ final case class UserRepoImpl()(implicit t: Transactor[IO]) extends UserRepo {
 
   override def updateUser(userId: UUID, newUser: UserDTO): IO[Int] =
     sql"UPDATE users SET first_name = ${newUser.firstName}, last_name = ${newUser.lastName} WHERE id = $userId"
+      .update.run.transact(t)
+
+  override def confirmUser(userId: UUID): IO[Int] =
+    sql"UPDATE users SET is_confirmed = TRUE WHERE id = $userId"
       .update.run.transact(t)
 
   override def updatePassword(userId: UUID, newPasswordHash: String): IO[Int] =

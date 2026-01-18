@@ -8,6 +8,7 @@ final case class AppConfig(
   authConfig: AuthConfig,
   dbConnectionConfig: DbConnectionConfig,
   networkConfig: NetworkConfig,
+  natsConfig: NatsConfig
 )
 
 object AppConfig extends ConfigCompanionBase[AppConfig] {

@@ -52,7 +52,9 @@ libraryDependencies ++= Seq(
   flywayPostgres,
   bouncyCastleBcpkix,
   bouncyCastleBcprov,
-  fs2,
+  fs2Core,
+  fs2IO,
+  nats
 )
 
 inThisBuild(

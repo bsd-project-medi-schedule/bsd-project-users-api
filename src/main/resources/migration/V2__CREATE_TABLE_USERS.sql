@@ -6,5 +6,6 @@ CREATE TABLE IF NOT EXISTS users (
     first_name       TEXT                     NOT NULL,
     last_name        TEXT                     NOT NULL,
     phone_number     TEXT,
+    is_confirmed     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at       TIMESTAMP NOT NULL DEFAULT now()
 );

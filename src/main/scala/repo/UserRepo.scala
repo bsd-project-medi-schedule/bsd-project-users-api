@@ -22,6 +22,8 @@ trait UserRepo {
 
   def updateUser(userId: UUID, newUser: UserDTO): IO[Int]
 
+  def confirmUser(userId: UUID): IO[Int];
+
   def updatePassword(userId: UUID, newPasswordHash: String): IO[Int]
 
   def deleteById(id: UUID): IO[Int]

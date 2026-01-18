@@ -88,6 +88,13 @@ final case class UserService(userRepo: UserRepo) {
     })
   }
 
+  def confirmUser(userId: UUID): EitherT[IO, ServiceError, Unit] = {
+    EitherT(userRepo.confirmUser(userId).map {
+      case 0 => Left(ServiceError.NotFound("Could not find user"))
+      case _ => Right(())
+    })
+  }
+
   def updatePassword(userId: UUID, newPassword: String): EitherT[IO, ServiceError, Unit] = {
     for {
       _ <- EitherT.cond[IO](
