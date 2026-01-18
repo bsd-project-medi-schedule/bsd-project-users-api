@@ -21,6 +21,12 @@ import utils.memory.NewUsersTokens
 import utils.JwtService
 
 object Main extends IOApp.Simple with Logging {
+
+  System.setProperty(
+    "cats.effect.workers",
+    15.toString
+  )
+
   private def runPeriodicTask(name: String, task: IO[Unit], interval: FiniteDuration): IO[Unit] =
     Stream.awakeEvery[IO](interval)
       .evalMap(_ => task.handleErrorWith(e => logger.error(e)(s"TTL check failed for task $name")))

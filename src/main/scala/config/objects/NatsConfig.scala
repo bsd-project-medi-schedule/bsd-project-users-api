@@ -9,6 +9,7 @@ final case class NatsConfig(
   natsPort: Int,
   connectionName: String,
   streamName: String,
+  durablePrefix: String,
   streamSubjects: List[String]
 )
 

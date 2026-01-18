@@ -17,8 +17,8 @@ case class AckableEvent(event: NatsEvent, ack: IO[Unit])
 
 trait NatsClient {
   def publish(subject: String, event: NatsEvent): IO[Unit]
-  def subscribe(subject: String, streamName: String): Stream[IO, AckableEvent]
-  def subscribeRaw(subject: String, streamName: String): Stream[IO, Message]
+  def subscribe(subject: String, streamName: String, durablePrefix: String): Stream[IO, AckableEvent]
+  def subscribeRaw(subject: String, streamName: String, durablePrefix: String): Stream[IO, Message]
 }
 
 object NatsClient {
@@ -142,28 +142,29 @@ object NatsClient {
         ()
       }
 
-    override def subscribe(subject: String, streamName: String): Stream[IO, AckableEvent] =
-      subscribeRaw(subject, streamName).evalMap { msg =>
+    override def subscribe(subject: String, streamName: String, durablePrefix: String): Stream[IO, AckableEvent] =
+      subscribeRaw(subject, streamName, durablePrefix).evalMap { msg =>
         val json = new String(msg.getData, StandardCharsets.UTF_8)
         IO.fromEither(EventCodec.decode(json).leftMap(e => new RuntimeException(e)))
           .map(event => AckableEvent(event, IO.delay(msg.ack())))
       }
 
-    override def subscribeRaw(subject: String, streamName: String): Stream[IO, Message] =
+    override def subscribeRaw(subject: String, streamName: String, durablePrefix: String): Stream[IO, Message] =
       Stream.eval(Queue.unbounded[IO, Option[Message]]).flatMap { queue =>
         // Cats Effect Dispatcher bridges callback APIs -> IO safely (no blocking in callback thread).
         Stream.resource(CatsDispatcher.parallel[IO]).flatMap { ceDispatcher =>
 
           val subscribeAction: IO[(io.nats.client.Dispatcher, Subscription)] =
             IO.delay {
-              // Use ephemeral push consumer - let JetStream create it automatically
+              val durableName = s"$durablePrefix-${subject.replace(".", "-").replace("*", "all")}"
+
               val consumerConfig = ConsumerConfiguration.builder()
-                .durable(streamName)                 // IMPORTANT: durable name
+                .durable(durableName)
                 .filterSubject(subject)
                 .ackPolicy(AckPolicy.Explicit)
-                .deliverPolicy(DeliverPolicy.All)     // IMPORTANT: not New
-                .maxAckPending(1024)
+                .deliverPolicy(DeliverPolicy.All) // Get all unacked messages, not just new ones
                 .ackWait(JDuration.ofSeconds(30))
+                .maxDeliver(3) // Retry failed messages up to 3 times
                 .build()
 
               val pushOptions = PushSubscribeOptions.builder()

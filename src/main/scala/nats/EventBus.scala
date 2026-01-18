@@ -21,7 +21,7 @@ object EventBus {
         IO.parSequence(events.map(e => client.publish(e.eventType, e))).map(_ => ())
 
       override def subscribe(pattern: String): Stream[IO, AckableEvent] =
-        client.subscribe(pattern, natsConfig.streamName)
+        client.subscribe(pattern, natsConfig.streamName, natsConfig.durablePrefix)
     }
 
   def resource(natsConfig: NatsConfig): Resource[IO, EventBus] =
