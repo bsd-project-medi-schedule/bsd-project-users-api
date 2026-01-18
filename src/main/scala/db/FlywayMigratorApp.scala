@@ -1,13 +1,13 @@
 package db
 
-import cats.effect.{IO, IOApp}
+import cats.effect.IO
 import config.ConfigUtils
 import config.objects.DbConnectionConfig
 import org.flywaydb.core.Flyway
 
-object FlywayMigratorApp extends IOApp.Simple {
+object FlywayMigratorApp {
 
-  private def migrate(): IO[Unit] =
+  def migrate(): IO[Unit] =
     for {
       _   <- IO.println("Migrating database")
       cfg <- ConfigUtils.loadAndParse[DbConnectionConfig](
@@ -30,6 +30,4 @@ object FlywayMigratorApp extends IOApp.Simple {
       _      <- IO.println(s"Migration executed: ${result.migrationsExecuted}")
     } yield ()
 
-  override def run: IO[Unit] =
-    migrate()
 }

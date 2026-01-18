@@ -117,10 +117,10 @@ final case class UserHttp(
                 UserCreatedEvent(id, ts, userId, userData.email)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.welcome", welcomeEmailMetadata)
+                EmailEvent(id, ts, userData.email, purpose = "email.user.welcome", welcomeEmailMetadata)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.confirm", createdEmailMetadata)
+                EmailEvent(id, ts, userData.email, purpose = "email.user.confirm", createdEmailMetadata)
               )
             )
             _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")
@@ -176,10 +176,10 @@ final case class UserHttp(
                 UserCreatedEvent(id, ts, userId, userData.email)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.welcome", welcomeEmailMetadata)
+                EmailEvent(id, ts, userData.email, purpose = "email.user.welcome", welcomeEmailMetadata)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.confirm", createdEmailMetadata)
+                EmailEvent(id, ts, userData.email, purpose = "email.user.confirm", createdEmailMetadata)
               )
             )
             _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")

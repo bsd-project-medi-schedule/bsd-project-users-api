@@ -1,9 +1,8 @@
 import cats.effect.*
 import cats.implicits.toSemigroupKOps
 import config.objects.NetworkConfig
-import config.AppConfig
-import config.ConfigUtils
-import db.DbContext
+import config.{AppConfig, ConfigUtils, Logging}
+import db.{DbContext, FlywayMigratorApp}
 import doobie.Transactor
 import factory.AuthFactory
 import factory.UserFactory
@@ -15,6 +14,7 @@ import natstools.handlers.UserCreatedHandler
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
+
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.duration.FiniteDuration
 import scala.language.postfixOps
@@ -22,9 +22,7 @@ import service.LoginSessionService
 import utils.memory.NewUsersTokens
 import utils.JwtService
 
-object Main extends IOApp.Simple {
-  implicit val logger: Logger[IO] = Slf4jLogger.getLogger[IO]
-
+object Main extends IOApp.Simple with Logging {
   private def runPeriodicTask(name: String, task: IO[Unit], interval: FiniteDuration): IO[Unit] =
     Stream.awakeEvery[IO](interval)
       .evalMap(_ => task.handleErrorWith(e => logger.error(e)(s"TTL check failed for task $name")))
@@ -77,9 +75,13 @@ object Main extends IOApp.Simple {
 
   override def run: IO[Unit] =
     for {
-      _   <- logger.info("Starting main server")
+      _ <- IO.println("=== Running the Migrations ===")
+      _ <- FlywayMigratorApp.migrate()
+      _ <- IO.println("Migrations completed")
+
+      _   <- IO.println("Starting main server")
       cfg <- ConfigUtils.loadAndParse[AppConfig]("application.conf", "application")
-      _   <- logger.info("Config loaded")
+      _   <- IO.println("Config loaded")
       _   <- IO.println("")
 
       _ <- IO.println("Starting server")
