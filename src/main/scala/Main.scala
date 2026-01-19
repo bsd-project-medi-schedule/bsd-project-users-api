@@ -10,6 +10,7 @@ import config.AppConfig
 import config.CORS.MainCorsPolicy
 import config.ConfigUtils
 import config.Logging
+import config.middleware.ErrorHandlerMiddleware
 import db.DbContext
 import db.FlywayMigratorApp
 import doobie.Transactor
@@ -105,7 +106,8 @@ object Main extends IOApp.Simple with Logging {
         authHttp.routes(),
       ).reduce(_ <+> _)
 
-      mainCorsRoutes = MainCorsPolicy(allRoutes)
+      routesWithErrorHandling = ErrorHandlerMiddleware(allRoutes)
+      mainCorsRoutes = MainCorsPolicy(routesWithErrorHandling)
 
       loginSessionHandler = LoginSessionHandler(loginSessionRepo)
 
