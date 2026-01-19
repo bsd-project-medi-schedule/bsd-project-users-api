@@ -17,7 +17,7 @@ case class UserDeleteEvent(
 }
 
 object UserDeleteEvent {
-  private val EVENT_TYPE = "user.created"
+  private val EVENT_TYPE = "user.deleted"
   implicit val codec: Codec[UserDeleteEvent] = deriveCodec
   NatsEvent.register(EVENT_TYPE, codec)
 }

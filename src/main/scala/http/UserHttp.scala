@@ -7,6 +7,7 @@ import config.objects.NetworkConfig
 import error.ServiceError
 import io.circe.syntax.*
 import io.circe.Json
+
 import java.util.UUID
 import nats.EventBus
 import nats.NatsEvent
@@ -16,7 +17,6 @@ import org.http4s.circe.*
 import org.http4s.circe.CirceEntityCodec.circeEntityDecoder
 import org.http4s.dsl.io.*
 import org.http4s.HttpRoutes
-import service.LoginSessionService
 import service.UserService
 import utils.memory.ConfirmUsersToken
 import utils.memory.NewUsersTokens
@@ -26,12 +26,13 @@ import utils.Sha256Service
 import utils.UserRanks
 import DTO.GenericMessageDTO
 import DTO.UserDTO
+import org.http4s.client.Client
 
 final case class UserHttp(
-  userService: UserService,
 )(implicit
+  userService: UserService,
   jwtService: JwtService,
-  loginSessionService: LoginSessionService,
+  client: Client[IO],
   eventBus: EventBus,
   networkConfig: NetworkConfig
 ) {
@@ -102,7 +103,9 @@ final case class UserHttp(
             _ <- EitherT(ConfirmUsersToken.put(
               Sha256Service.hash(otp),
               userId
-            ).attempt.map(_.leftMap(_ => ServiceError.InternalError("There was an internal problem"))))
+            ).attempt.map(_.leftMap(_ =>
+              ServiceError.InternalError("There was an internal problem")
+            )))
 
             welcomeEmailMetadata = Map(
               "name" -> s"${userData.firstName} ${userData.lastName}"
@@ -114,13 +117,25 @@ final case class UserHttp(
 
             events = Seq(
               NatsEvent.create[UserCreatedEvent]((id, ts) =>
-                UserCreatedEvent(id, ts, userId, userData.email)
+                UserCreatedEvent(id, ts, userId, userData.email, 2)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.user.welcome", welcomeEmailMetadata)
+                EmailEvent(
+                  id,
+                  ts,
+                  userData.email,
+                  purpose = EmailEvent.PURPOSE_WELCOME,
+                  welcomeEmailMetadata
+                )
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.user.confirm", createdEmailMetadata)
+                EmailEvent(
+                  id,
+                  ts,
+                  userData.email,
+                  purpose = EmailEvent.PURPOSE_CONFIRM,
+                  createdEmailMetadata
+                )
               )
             )
             _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")
@@ -161,7 +176,9 @@ final case class UserHttp(
             _ <- EitherT(ConfirmUsersToken.put(
               Sha256Service.hash(otp),
               userId
-            ).attempt.map(_.leftMap(_ => ServiceError.InternalError("There was an internal problem"))))
+            ).attempt.map(_.leftMap(_ =>
+              ServiceError.InternalError("There was an internal problem")
+            )))
 
             welcomeEmailMetadata = Map(
               "name" -> s"${userData.firstName} ${userData.lastName}"
@@ -173,13 +190,25 @@ final case class UserHttp(
 
             events = Seq(
               NatsEvent.create[UserCreatedEvent]((id, ts) =>
-                UserCreatedEvent(id, ts, userId, userData.email)
+                UserCreatedEvent(id, ts, userId, userData.email, 1)
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.user.welcome", welcomeEmailMetadata)
+                EmailEvent(
+                  id,
+                  ts,
+                  userData.email,
+                  purpose = "email.user.welcome",
+                  welcomeEmailMetadata
+                )
               ),
               NatsEvent.create[EmailEvent]((id, ts) =>
-                EmailEvent(id, ts, userData.email, purpose = "email.user.confirm", createdEmailMetadata)
+                EmailEvent(
+                  id,
+                  ts,
+                  userData.email,
+                  purpose = "email.user.confirm",
+                  createdEmailMetadata
+                )
               )
             )
             _ <- HttpUtils.httpPublishEvent(events, "Email service unavailable")

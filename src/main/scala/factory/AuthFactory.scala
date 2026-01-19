@@ -3,29 +3,22 @@ package factory
 import cats.effect.IO
 import cats.effect.Resource
 import config.objects.NetworkConfig
-import config.CORS.MainCorsPolicy
 import http.AuthHttp
 import nats.EventBus
-import org.http4s.HttpRoutes
+import org.http4s.client.Client
 import service.LoginSessionService
 import service.UserService
 import utils.JwtService
 
-final case class AuthFactory(
-  authRoutes: HttpRoutes[IO]
-)
-
 object AuthFactory {
-  def apply(userService: UserService)(implicit
+  def apply(
+    userService: UserService,
     jwtService: JwtService,
     loginSessionService: LoginSessionService,
+  )(implicit
+    client: Client[IO],
     eventBus: EventBus,
     networkConfig: NetworkConfig
-  ): Resource[IO, AuthFactory] =
-    Resource.eval(IO {
-      val authHttp = AuthHttp(userService)
-      val authCors = MainCorsPolicy(authHttp.routes())
-
-      AuthFactory(authCors)
-    })
+  ): Resource[IO, AuthHttp] =
+    Resource.eval(IO(AuthHttp()(userService, jwtService, loginSessionService, client, eventBus, networkConfig)))
 }

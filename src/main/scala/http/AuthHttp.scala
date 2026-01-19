@@ -25,14 +25,16 @@ import utils.NonceService
 import utils.Sha256Service
 import DTO.LoginDTO
 import DTO.LoginSessionDTO
+import org.http4s.client.Client
 
 import java.util.UUID
 
 final case class AuthHttp(
-  usersService: UserService,
 )(implicit
+  usersService: UserService,
   jwtService: JwtService,
   loginSessionService: LoginSessionService,
+  client: Client[IO],
   eventBus: EventBus,
   networkConfig: NetworkConfig
 ) {
@@ -44,11 +46,21 @@ final case class AuthHttp(
   def routes(): HttpRoutes[IO] =
     HttpRoutes.of[IO] {
 
+      case GET -> Root / "auth" / token =>
+        val result = for {
+          session <- loginSessionService.readByToken(token)
+        } yield session
+
+        result.fold(
+          err => ErrorMapper.toResponse(err),
+          session => Ok(session.asJson),
+        ).flatten
+
       case GET -> Root / "health" =>
         (for {
           _ <- IO.println("📝 Publishing: UserCreated event")
           userCreated = NatsEvent.create[UserCreatedEvent]((id, ts) =>
-            UserCreatedEvent(id, ts, UUID.randomUUID(), "john@example.com")
+            UserCreatedEvent(id, ts, UUID.randomUUID(), "john@example.com", 1)
           )
           _ <- eventBus.publish(userCreated)
         } yield Ok("Healthy")).flatten

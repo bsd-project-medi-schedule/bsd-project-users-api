@@ -1,31 +1,54 @@
 import cats.effect.*
 import cats.implicits.toSemigroupKOps
+import cats.syntax.all.*
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.Port
+import config.objects.AuthConfig
+import config.objects.NatsConfig
 import config.objects.NetworkConfig
-import config.{AppConfig, ConfigUtils, Logging}
-import db.{DbContext, FlywayMigratorApp}
+import config.AppConfig
+import config.CORS.MainCorsPolicy
+import config.ConfigUtils
+import config.Logging
+import db.DbContext
+import db.FlywayMigratorApp
 import doobie.Transactor
 import factory.AuthFactory
 import factory.UserFactory
 import fs2.Stream
+import impl.LoginSessionRepoImpl
+import impl.UserRepoImpl
 import nats.EventBus
+import nats.EventHandler
 import nats.EventProcessor
 import nats.NatsClient
-import natstools.handlers.UserCreatedHandler
-import org.http4s.blaze.server.BlazeServerBuilder
-
+import natstools.handlers.LoginSessionHandler
+import org.http4s.client.Client
+import org.http4s.ember.client.EmberClientBuilder
+import org.http4s.ember.server.EmberServerBuilder
+import org.http4s.HttpRoutes
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.duration.FiniteDuration
 import scala.language.postfixOps
 import service.LoginSessionService
+import service.UserService
 import utils.memory.NewUsersTokens
 import utils.JwtService
 
 object Main extends IOApp.Simple with Logging {
 
-  System.setProperty(
-    "cats.effect.workers",
-    15.toString
-  )
+  private def eventBusResource(cfg: NatsConfig): Resource[IO, EventBus] =
+    NatsClient.resource(cfg).map(client => EventBus.fromNats(client, cfg))
+
+  private def startEventProcessor(handlers: Seq[EventHandler])(implicit
+    eventBus: EventBus
+  ): Resource[IO, Unit] =
+    for {
+      processor <- Resource.eval(EventProcessor.create(eventBus))
+      handlersIO = IO.parSequence(handlers.map(processor.register))
+      _ <- Resource.eval(handlersIO)
+      _ <- Resource.make(processor.run.compile.drain.start)(_.cancel).void
+    } yield ()
 
   private def runPeriodicTask(name: String, task: IO[Unit], interval: FiniteDuration): IO[Unit] =
     Stream.awakeEvery[IO](interval)
@@ -33,78 +56,94 @@ object Main extends IOApp.Simple with Logging {
       .compile
       .drain
 
-  private def startServer(cfg: AppConfig)(implicit eventBus: EventBus): Resource[IO, Unit] =
-    for {
+  private def startServer(routes: HttpRoutes[IO])(implicit
+    networkConfig: NetworkConfig
+  ): Resource[IO, Unit] = {
+    val host = Host.fromString(networkConfig.appHost).getOrElse(Host.fromString("0.0.0.0").get)
+    val port = Port.fromInt(networkConfig.appPort).getOrElse(Port.fromInt(7000).get)
+
+    EmberServerBuilder
+      .default[IO]
+      .withHost(host)
+      .withPort(port)
+      .withHttpApp(routes.orNotFound)
+      .build
+      .void
+  }
+
+  private def buildClient(): Resource[IO, Client[IO]] =
+    EmberClientBuilder
+      .default[IO]
+      .build
+
+  private def buildApp(cfg: AppConfig): Resource[IO, (Unit, Unit)] =
+    (for {
+      eventBus <- eventBusResource(cfg.natsConfig)
+      implicit0(eb: EventBus) = eventBus
+
       dbTransactor <- DbContext(cfg.dbConnectionConfig)
+      implicit0(xa: Transactor[IO]) = dbTransactor.transactor
 
-      implicit0(t: Transactor[IO])          = dbTransactor.transactor
+      emberClient <- buildClient()
+      implicit0(c: Client[IO]) = emberClient
+
+      implicit0(authConfig: AuthConfig) = cfg.authConfig
       implicit0(networkConfig: NetworkConfig) = cfg.networkConfig
-      implicit0(jwtService: JwtService)     = JwtService(cfg.authConfig)
 
-      uf <- UserFactory()
-      implicit0(loginSessionService: LoginSessionService) = uf.loginSessionService
+      userRepo = UserRepoImpl()
+      loginSessionRepo = LoginSessionRepoImpl()
 
-      // Pass eventBus into AuthFactory
-      af <- AuthFactory(uf.userService)
+      userService = UserService(userRepo)
+      loginSessionService: LoginSessionService = LoginSessionService(loginSessionRepo)
+      jwtService = JwtService()
+
+      userHttp <- UserFactory(userService, jwtService)
+      authHttp <- AuthFactory(userService, jwtService, loginSessionService)
 
       allRoutes = Seq(
-        uf.userRoutes,
-        af.authRoutes,
+        userHttp.routes(),
+        authHttp.routes(),
+      ).reduce(_ <+> _)
+
+      mainCorsRoutes = MainCorsPolicy(allRoutes)
+
+      loginSessionHandler = LoginSessionHandler(loginSessionRepo)
+
+      natsHandlers = Seq(
+        loginSessionHandler
       )
 
-      routes = allRoutes.reduce(_ <+> _).orNotFound
-
-      _ <- BlazeServerBuilder[IO]
-        .bindHttp(cfg.networkConfig.appPort, cfg.networkConfig.appHost)
-        .withHttpApp(routes)
-        .resource
-    } yield ()
-
-  private def eventBusResource(cfg: AppConfig): Resource[IO, EventBus] =
-    for {
-      client <- NatsClient.resource(cfg.natsConfig)
-    } yield EventBus.fromNats(client, cfg.natsConfig)
-
-  private def startEventProcessor(eventBus: EventBus): Resource[IO, Unit] =
-    for {
-      processor <- Resource.eval(EventProcessor.create(eventBus))
-      _         <- Resource.eval(registerHandlers(processor))
-      _         <- Resource.make(processor.run.compile.drain.start)(_.cancel)
-    } yield ()
-
-  private def registerHandlers(processor: EventProcessor): IO[Unit] =
-    for {
-      _ <- processor.register(UserCreatedHandler)
-    } yield ()
+    } yield (startServer(mainCorsRoutes), startEventProcessor(natsHandlers)).parTupled).flatten
 
   override def run: IO[Unit] =
     for {
-      _ <- IO.println("=== Running the Migrations ===")
+      _ <- logger.info("=== Running the Migrations ===")
       _ <- FlywayMigratorApp.migrate()
-      _ <- IO.println("Migrations completed")
+      _ <- logger.info("Migrations completed")
 
-      _   <- IO.println("Starting main server")
+      _   <- logger.info("Starting main server")
       cfg <- ConfigUtils.loadAndParse[AppConfig]("application.conf", "application")
-      _   <- IO.println("Config loaded")
-      _   <- IO.println("")
+      _   <- logger.info("Config loaded")
+      _   <- logger.info("")
 
-      _ <- IO.println("Starting server")
-      _ <- IO.println("")
+      _ <- logger.info("Starting server")
+      _ <- logger.info("")
 
-      _ <- IO.println("=== NATS JetStream Event System Starting ===")
-      _ <- IO.println(s"Connected to: nats://${cfg.natsConfig.natsHost}:${cfg.natsConfig.natsPort}")
-      _ <- IO.println(s"Stream '${cfg.natsConfig.streamName}' configured. Handlers registered. Starting event processing...")
-      _ <- IO.println("")
+      _ <- logger.info("=== NATS JetStream Event System Starting ===")
+      _ <-
+        logger.info(s"Connected to: nats://${cfg.natsConfig.natsHost}:${cfg.natsConfig.natsPort}")
+      _ <- logger.info(
+        s"Stream '${cfg.natsConfig.streamName}' configured. Handlers registered. Starting event processing..."
+      )
+      _ <- logger.info("")
 
-      _ <- eventBusResource(cfg).use { implicit eventBus =>
-        (startServer(cfg), startEventProcessor(eventBus)).parTupled.use { _ =>
-          val ttlRegister = runPeriodicTask("Register tokens", NewUsersTokens.cleanExpired, 1.hour)
+      _ <- buildApp(cfg).use { _ =>
+        val ttlRegister = runPeriodicTask("Register tokens", NewUsersTokens.cleanExpired, 1.hour)
 
-          List(
-            IO.never,
-            ttlRegister,
-          ).parSequence_.void
-        }
+        List(
+          IO.never,
+          ttlRegister,
+        ).parSequence_.void
       }
     } yield ()
 

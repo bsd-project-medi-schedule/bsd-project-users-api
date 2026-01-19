@@ -22,4 +22,7 @@ object EmailEvent {
   private val EVENT_TYPE = "message.email"
   implicit val codec: Codec[EmailEvent] = deriveCodec
   NatsEvent.register(EVENT_TYPE, codec)
+
+  val PURPOSE_WELCOME = "email.user.welcome"
+  val PURPOSE_CONFIRM = "email.user.confirm"
 }

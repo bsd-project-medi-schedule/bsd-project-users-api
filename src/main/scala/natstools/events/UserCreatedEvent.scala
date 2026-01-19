@@ -12,7 +12,8 @@ case class UserCreatedEvent(
   timestamp: Instant,
 
   userId: UUID,
-  email: String
+  email: String,
+  role: Int
 ) extends NatsEvent {
   val eventType: String = UserCreatedEvent.EVENT_TYPE
   protected def baseEncoder: Encoder[this.type] =

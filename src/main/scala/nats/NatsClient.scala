@@ -112,7 +112,7 @@ object NatsClient {
     def addStreamWithOverlapRepair(): IO[Unit] =
       addStream().handleErrorWith {
         case e if isApiCode(e, SubjectsOverlap) =>
-          deleteConflictingStreams *> addStream
+          deleteConflictingStreams() *> addStream()
         case other =>
           IO.raiseError(other)
       }

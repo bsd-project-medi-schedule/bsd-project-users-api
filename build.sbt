@@ -25,6 +25,7 @@ lazy val root = Project(id = "users-api", base = file(".")).in(file("."))
 libraryDependencies ++= Seq(
   http4sDsl,
   http4sEmberServer,
+  http4sEmberClient,
   http4sBlazeServer,
   http4sBlazeClient,
   http4sCirce,

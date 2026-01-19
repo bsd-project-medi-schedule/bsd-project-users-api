@@ -8,7 +8,7 @@ import config.objects.AuthConfig
 import java.util.{Date, UUID}
 import scala.util.Try
 
-final case class JwtService(authConfig: AuthConfig) {
+final case class JwtService()(implicit authConfig: AuthConfig) {
 
   private val signer: JWSSigner = new MACSigner(authConfig.secretKey.getBytes)
   private val verifier: JWSVerifier = new MACVerifier(authConfig.secretKey.getBytes)
