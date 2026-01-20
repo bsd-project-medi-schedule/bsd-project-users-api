@@ -15,6 +15,9 @@ final case class LoginSessionRepoImpl()(implicit t: Transactor[IO]) extends Logi
     sql"""
      INSERT INTO login_sessions (id, token, expires_at)
      VALUES (${loginSession.id}, ${loginSession.token}, ${loginSession.expiresAt})
+     ON CONFLICT (id) DO UPDATE SET
+       token = EXCLUDED.token,
+       expires_at = EXCLUDED.expires_at
      RETURNING id
   """.query[UUID].option.transact(t)
 
