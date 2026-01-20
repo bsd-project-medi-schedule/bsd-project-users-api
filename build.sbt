@@ -55,8 +55,11 @@ libraryDependencies ++= Seq(
   bouncyCastleBcprov,
   fs2Core,
   fs2IO,
-  nats
+  nats,
+  munit
 )
+
+testFrameworks += new TestFramework("munit.Framework")
 
 inThisBuild(
   List(

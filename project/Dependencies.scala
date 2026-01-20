@@ -67,4 +67,5 @@ object Dependencies {
 
   lazy val apachePoi = "org.apache.poi" % "poi-ooxml" % "5.4.1"
 
+  lazy val munit = "org.scalameta" %% "munit" % "1.0.0" % Test
 }
