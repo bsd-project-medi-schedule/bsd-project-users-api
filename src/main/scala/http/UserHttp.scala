@@ -46,7 +46,7 @@ final case class UserHttp(
       case req @ GET -> Root / "user" =>
         val resData = for {
           (jwtClaims, refreshResult) <-
-            HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.DOCTOR)
+            HttpUtils.verifyTokenFromCookie(req.cookies, UserRanks.PATIENT)
           userId = UUID.fromString(jwtClaims.getSubject)
 
           userDTO <- userService.readUser(userId)
