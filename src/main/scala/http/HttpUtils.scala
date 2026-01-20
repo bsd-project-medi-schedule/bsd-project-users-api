@@ -140,7 +140,8 @@ object HttpUtils {
       httpOnly = true,
       secure = networkConfig.secureCookies,
       sameSite = Some(SameSite.None),
-      path = Some("/")
+      path = Some("/"),
+      domain = networkConfig.cookieDomain
     )
     req.map(_.addCookie(jwtCookie))
   }
@@ -158,7 +159,8 @@ object HttpUtils {
         httpOnly = true,
         secure = networkConfig.secureCookies,
         sameSite = Some(SameSite.None),
-        path = Some("/")
+        path = Some("/"),
+        domain = networkConfig.cookieDomain
       )
     } else {
       ResponseCookie(
@@ -167,7 +169,8 @@ object HttpUtils {
         httpOnly = true,
         secure = networkConfig.secureCookies,
         sameSite = Some(SameSite.None),
-        path = Some("/")
+        path = Some("/"),
+        domain = networkConfig.cookieDomain
       )
     }
 
@@ -184,7 +187,8 @@ object HttpUtils {
       httpOnly = true,
       secure = networkConfig.secureCookies,
       sameSite = Some(SameSite.None),
-      path = Some("/")
+      path = Some("/"),
+      domain = networkConfig.cookieDomain
     )
     val clearedRefreshCookie = ResponseCookie(
       name = "refresh-token",
@@ -193,7 +197,8 @@ object HttpUtils {
       httpOnly = true,
       secure = networkConfig.secureCookies,
       sameSite = Some(SameSite.None),
-      path = Some("/")
+      path = Some("/"),
+      domain = networkConfig.cookieDomain
     )
     req.map(_.addCookie(clearedJwtCookie).addCookie(clearedRefreshCookie))
   }
