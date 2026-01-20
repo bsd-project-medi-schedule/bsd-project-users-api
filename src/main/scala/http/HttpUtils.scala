@@ -139,7 +139,7 @@ object HttpUtils {
       maxAge = Some(cookieExpiry),
       httpOnly = true,
       secure = networkConfig.secureCookies,
-      sameSite = Some(SameSite.Strict),
+      sameSite = Some(SameSite.None),
       path = Some("/")
     )
     req.map(_.addCookie(jwtCookie))
