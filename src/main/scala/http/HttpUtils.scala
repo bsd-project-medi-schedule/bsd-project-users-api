@@ -157,7 +157,7 @@ object HttpUtils {
         maxAge = Some(cookieExpiry),
         httpOnly = true,
         secure = networkConfig.secureCookies,
-        sameSite = Some(SameSite.Strict),
+        sameSite = Some(SameSite.None),
         path = Some("/")
       )
     } else {
@@ -166,7 +166,7 @@ object HttpUtils {
         content = refresh,
         httpOnly = true,
         secure = networkConfig.secureCookies,
-        sameSite = Some(SameSite.Strict),
+        sameSite = Some(SameSite.None),
         path = Some("/")
       )
     }
