@@ -11,4 +11,4 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 INSERT INTO users (email, password, role, first_name, last_name, phone_number, is_confirmed)
-VALUES (admin@office.local,$2a$12$yuuJTYBCwC0gzOMt.RtlLetu5rO6.kZUjDKr2zuLwsBm7CeIuUlPW,0,Admin,Power,+40712345678, true)
+VALUES ('admin@office.local','$2a$12$yuuJTYBCwC0gzOMt.RtlLetu5rO6.kZUjDKr2zuLwsBm7CeIuUlPW',0,'Admin','Power','+40712345678', true)
